@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"log"
 
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
+	"github.com/nbd-wtf/go-nostr"
 )
 
 func InitDB(config Config) *sql.DB {
@@ -27,13 +28,13 @@ func InitDB(config Config) *sql.DB {
 	return db
 }
 
-// pass context when saving e to db
-func saveEvent(db *sql.DB, e Event) error {
+// use context when saving e to db
+func saveEvent(db *sql.DB, e nostr.Event) error {
 	insertStatement := `
-	INSERT INTO events (id, pubkey, created_at, kind, content, sig)
-	VALUES ($1, $2, to_timestamp($3), $4, $5, $6)`
+	INSERT INTO events (id, pubkey, created_at, kind, tags, content, sig)
+	VALUES ($1, $2, to_timestamp($3), $4, $5, $6, $7)`
 
-	_, err := db.Exec(insertStatement, e.Id, e.Pubkey, e.CreatedAt, e.Kind, e.Content, e.Sig)
+	_, err := db.Exec(insertStatement, e.ID, e.PubKey, e.CreatedAt, e.Kind, pq.Array(e.Tags), e.Content, e.Sig)
 	if err != nil {
 		return fmt.Errorf("error saving event: %w", err)
 
