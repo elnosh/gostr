@@ -17,12 +17,12 @@ const (
 	OKMsg     = "OK"
 )
 
-func WriteMessage(ctx context.Context, c *websocket.Conn, msg []string) error {
-	return wsjson.Write(ctx, c, msg)
+func WriteMessage(ctx context.Context, c *websocket.Conn, msgEnvelope nostr.Envelope) error {
+	return wsjson.Write(ctx, c, msgEnvelope)
 }
 
-func buildOKMessage(id, message, success string) []string {
-	return []string{"OK", id, success, message}
+func buildOKMessage(id, message string, success bool) *nostr.OKEnvelope {
+	return &nostr.OKEnvelope{EventID: id, OK: success, Reason: &message}
 }
 
 func validEvent(db *sql.DB, evt nostr.Event) (bool, error) {

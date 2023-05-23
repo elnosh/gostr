@@ -32,7 +32,8 @@ func ws(db *sql.DB) http.HandlerFunc {
 			}
 
 			if !json.Valid(message) {
-				WriteMessage(ctx, c, []string{NoticeMsg, "Invalid message"})
+				var notice nostr.NoticeEnvelope = "Invalid message"
+				WriteMessage(ctx, c, &notice)
 				continue
 			}
 
@@ -43,7 +44,8 @@ func ws(db *sql.DB) http.HandlerFunc {
 
 			msg, ok := v.([]interface{})
 			if !ok {
-				WriteMessage(ctx, c, []string{NoticeMsg, "Invalid message"})
+				var notice nostr.NoticeEnvelope = "Invalid message"
+				WriteMessage(ctx, c, &notice)
 				continue
 			}
 
@@ -63,35 +65,39 @@ func HandleMessage(ctx context.Context, c *websocket.Conn, db *sql.DB, msg []int
 			if len(msg) > 1 {
 				eventJson, err := json.Marshal(msg[i+1])
 				if err != nil {
-					return WriteMessage(ctx, c, []string{NoticeMsg, "Invalid message"})
+					var notice nostr.NoticeEnvelope = "Invalid message"
+					return WriteMessage(ctx, c, &notice)
 				}
 
 				var evt nostr.Event
 				if err = evt.UnmarshalJSON(eventJson); err != nil {
-					return WriteMessage(ctx, c, []string{NoticeMsg, "Invalid message"})
+					var notice nostr.NoticeEnvelope = "Invalid message"
+					return WriteMessage(ctx, c, &notice)
 				}
 
 				valid, err := validEvent(db, evt)
 				if valid {
 					err = saveEvent(db, evt)
 					if err != nil {
-						msg := buildOKMessage(evt.ID, "error: "+err.Error(), "false")
+						msg := buildOKMessage(evt.ID, "error: "+err.Error(), false)
 						return WriteMessage(ctx, c, msg)
 					}
 
-					msg := buildOKMessage(evt.ID, "Event received", "true")
+					msg := buildOKMessage(evt.ID, "Event received", true)
 					return WriteMessage(ctx, c, msg)
 				} else {
-					msg := buildOKMessage(evt.ID, "invalid: "+err.Error(), "false")
+					msg := buildOKMessage(evt.ID, "invalid: "+err.Error(), false)
 					return WriteMessage(ctx, c, msg)
 				}
 			} else {
-				return WriteMessage(ctx, c, []string{NoticeMsg, "bad message length"})
+				var notice nostr.NoticeEnvelope = "bad message length"
+				return WriteMessage(ctx, c, &notice)
 			}
 		case "REQ":
 		case "CLOSE":
 		default:
-			return WriteMessage(ctx, c, []string{NoticeMsg, "Invalid message"})
+			var notice nostr.NoticeEnvelope = "Invalid message"
+			return WriteMessage(ctx, c, &notice)
 		}
 	}
 	return nil
