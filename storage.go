@@ -36,8 +36,21 @@ func saveEvent(db *sql.DB, e nostr.Event) error {
 
 	_, err := db.Exec(insertStatement, e.ID, e.PubKey, e.CreatedAt, e.Kind, pq.Array(e.Tags), e.Content, e.Sig)
 	if err != nil {
-		return fmt.Errorf("error saving event: %w", err)
+		return fmt.Errorf("unable to save event: %w", err)
 
 	}
 	return nil
+}
+
+func eventExists(db *sql.DB, id string) (bool, error) {
+	sqlStatement := `SELECT EXISTS(SELECT 1 FROM events WHERE id=$1)`
+	var exists bool
+
+	row := db.QueryRow(sqlStatement, id)
+	err := row.Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+
+	return exists, nil
 }

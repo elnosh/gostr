@@ -32,10 +32,7 @@ func ws(db *sql.DB) http.HandlerFunc {
 			}
 
 			if !json.Valid(message) {
-				err = WriteMessage(ctx, c, NoticeMsg, "Invalid Message")
-				if err != nil {
-					return
-				}
+				WriteMessage(ctx, c, []string{NoticeMsg, "Invalid message"})
 				continue
 			}
 
@@ -46,10 +43,7 @@ func ws(db *sql.DB) http.HandlerFunc {
 
 			msg, ok := v.([]interface{})
 			if !ok {
-				err = WriteMessage(ctx, c, NoticeMsg, "Invalid Message")
-				if err != nil {
-					return
-				}
+				WriteMessage(ctx, c, []string{NoticeMsg, "Invalid message"})
 				continue
 			}
 
@@ -69,41 +63,35 @@ func HandleMessage(ctx context.Context, c *websocket.Conn, db *sql.DB, msg []int
 			if len(msg) > 1 {
 				eventJson, err := json.Marshal(msg[i+1])
 				if err != nil {
-					return WriteMessage(ctx, c, NoticeMsg, "Invalid Message")
+					return WriteMessage(ctx, c, []string{NoticeMsg, "Invalid message"})
 				}
 
 				var evt nostr.Event
 				if err = evt.UnmarshalJSON(eventJson); err != nil {
-					log.Println(err)
-					return WriteMessage(ctx, c, NoticeMsg, "Invalid Message")
+					return WriteMessage(ctx, c, []string{NoticeMsg, "Invalid message"})
 				}
 
-				validSig, err := evt.CheckSignature()
-				if err != nil {
-					log.Println(err)
-					return WriteMessage(ctx, c, NoticeMsg, "Invalid Message: "+err.Error())
-				}
-				if !validSig {
-					return WriteMessage(ctx, c, NoticeMsg, "Invalid signature: "+err.Error())
-				} else {
-					// use context when saving event to db
+				valid, err := validEvent(db, evt)
+				if valid {
 					err = saveEvent(db, evt)
 					if err != nil {
-						log.Println(err)
-						return WriteMessage(ctx, c, NoticeMsg, "Invalid Message")
+						msg := buildOKMessage(evt.ID, "error: "+err.Error(), "false")
+						return WriteMessage(ctx, c, msg)
 					}
 
-					// send OK msg if successfully saved event to DB
-					// look at nip-20 for how to handle command results
-					return WriteMessage(ctx, c, OKMsg, "Event received")
+					msg := buildOKMessage(evt.ID, "Event received", "true")
+					return WriteMessage(ctx, c, msg)
+				} else {
+					msg := buildOKMessage(evt.ID, "invalid: "+err.Error(), "false")
+					return WriteMessage(ctx, c, msg)
 				}
 			} else {
-				return WriteMessage(ctx, c, NoticeMsg, "Invalid Message")
+				return WriteMessage(ctx, c, []string{NoticeMsg, "bad message length"})
 			}
 		case "REQ":
 		case "CLOSE":
 		default:
-			return WriteMessage(ctx, c, NoticeMsg, "Invalid Message")
+			return WriteMessage(ctx, c, []string{NoticeMsg, "Invalid message"})
 		}
 	}
 	return nil
