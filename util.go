@@ -10,13 +10,6 @@ import (
 	"nhooyr.io/websocket/wsjson"
 )
 
-const (
-	EventMsg  = "EVENT"
-	EoseMsg   = "EOSE"
-	NoticeMsg = "NOTICE"
-	OKMsg     = "OK"
-)
-
 func WriteMessage(ctx context.Context, c *websocket.Conn, msgEnvelope nostr.Envelope) error {
 	return wsjson.Write(ctx, c, msgEnvelope)
 }
@@ -43,9 +36,6 @@ func validEvent(db *sql.DB, evt nostr.Event) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if !validSig {
-		return false, err
-	}
 
-	return true, nil
+	return validSig, nil
 }

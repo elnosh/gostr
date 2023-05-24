@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 
@@ -23,7 +24,6 @@ func ws(db *sql.DB) http.HandlerFunc {
 
 		ctx := r.Context()
 		for {
-			var v interface{}
 			_, message, err := c.Read(ctx)
 
 			// handle other closing cases
@@ -37,19 +37,16 @@ func ws(db *sql.DB) http.HandlerFunc {
 				continue
 			}
 
-			err = json.Unmarshal(message, &v)
+			var rawjson []json.RawMessage
+			err = json.Unmarshal(message, &rawjson)
 			if err != nil {
-				return
-			}
-
-			msg, ok := v.([]interface{})
-			if !ok {
-				var notice nostr.NoticeEnvelope = "Invalid message"
+				str := fmt.Sprintf("ERROR: %s", err.Error())
+				var notice nostr.NoticeEnvelope = nostr.NoticeEnvelope(str)
 				WriteMessage(ctx, c, &notice)
 				continue
 			}
 
-			err = HandleMessage(ctx, c, db, msg)
+			err = HandleMessage(ctx, c, db, rawjson)
 			if err != nil {
 				return
 			}
@@ -58,47 +55,47 @@ func ws(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-func HandleMessage(ctx context.Context, c *websocket.Conn, db *sql.DB, msg []interface{}) error {
-	for i, val := range msg {
-		switch val {
-		case "EVENT":
-			if len(msg) > 1 {
-				eventJson, err := json.Marshal(msg[i+1])
-				if err != nil {
-					var notice nostr.NoticeEnvelope = "Invalid message"
-					return WriteMessage(ctx, c, &notice)
-				}
+func HandleMessage(ctx context.Context, c *websocket.Conn, db *sql.DB, msg []json.RawMessage) error {
+	if len(msg) < 2 {
+		var notice nostr.NoticeEnvelope = "ERROR: message too short"
+		return WriteMessage(ctx, c, &notice)
+	}
 
-				var evt nostr.Event
-				if err = evt.UnmarshalJSON(eventJson); err != nil {
-					var notice nostr.NoticeEnvelope = "Invalid message"
-					return WriteMessage(ctx, c, &notice)
-				}
+	var msgType string
+	json.Unmarshal(msg[0], &msgType)
 
-				valid, err := validEvent(db, evt)
-				if valid {
-					err = saveEvent(db, evt)
-					if err != nil {
-						msg := buildOKMessage(evt.ID, "error: "+err.Error(), false)
-						return WriteMessage(ctx, c, msg)
-					}
-
-					msg := buildOKMessage(evt.ID, "Event received", true)
-					return WriteMessage(ctx, c, msg)
-				} else {
-					msg := buildOKMessage(evt.ID, "invalid: "+err.Error(), false)
-					return WriteMessage(ctx, c, msg)
-				}
-			} else {
-				var notice nostr.NoticeEnvelope = "bad message length"
-				return WriteMessage(ctx, c, &notice)
-			}
-		case "REQ":
-		case "CLOSE":
-		default:
+	switch msgType {
+	case "EVENT":
+		var evt nostr.Event
+		if err := evt.UnmarshalJSON(msg[1]); err != nil {
 			var notice nostr.NoticeEnvelope = "Invalid message"
 			return WriteMessage(ctx, c, &notice)
 		}
+
+		valid, err := validEvent(db, evt)
+		if err != nil {
+			msg := buildOKMessage(evt.ID, "invalid: "+err.Error(), false)
+			return WriteMessage(ctx, c, msg)
+		}
+
+		if valid {
+			err = saveEvent(db, evt)
+			if err != nil {
+				msg := buildOKMessage(evt.ID, "error: "+err.Error(), false)
+				return WriteMessage(ctx, c, msg)
+			}
+
+			msg := buildOKMessage(evt.ID, "Event received", true)
+			return WriteMessage(ctx, c, msg)
+		} else {
+			msg := buildOKMessage(evt.ID, "invalid: bad signature", false)
+			return WriteMessage(ctx, c, msg)
+		}
+	case "REQ":
+	case "CLOSE":
+	default:
+		var notice nostr.NoticeEnvelope = "Invalid message"
+		return WriteMessage(ctx, c, &notice)
 	}
 	return nil
 }
