@@ -3,6 +3,7 @@ module github.com/elnosh/lets-go-nostr
 go 1.20
 
 require (
+	github.com/Masterminds/squirrel v1.5.4
 	github.com/lib/pq v1.10.9
 	github.com/nbd-wtf/go-nostr v0.18.3
 	nhooyr.io/websocket v1.8.7
@@ -19,6 +20,8 @@ require (
 	github.com/gobwas/ws v1.2.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/klauspost/compress v1.10.3 // indirect
+	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect
+	github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/tidwall/gjson v1.14.4 // indirect
 	github.com/tidwall/match v1.1.1 // indirect

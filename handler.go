@@ -32,7 +32,7 @@ func ws(db *sql.DB) http.HandlerFunc {
 			}
 
 			if !json.Valid(message) {
-				var notice nostr.NoticeEnvelope = "Invalid message"
+				var notice nostr.NoticeEnvelope = "Invalid json"
 				WriteMessage(ctx, c, &notice)
 				continue
 			}
@@ -92,6 +92,37 @@ func HandleMessage(ctx context.Context, c *websocket.Conn, db *sql.DB, msg []jso
 			return WriteMessage(ctx, c, msg)
 		}
 	case "REQ":
+		if len(msg) < 3 {
+			var notice nostr.NoticeEnvelope = "ERROR: message too short"
+			return WriteMessage(ctx, c, &notice)
+		}
+
+		var subId string
+		json.Unmarshal(msg[1], &subId)
+
+		// if REQ has more than one filter
+		for i := 2; i < len(msg); i++ {
+			var filter nostr.Filter
+			json.Unmarshal(msg[i], &filter)
+
+			filteredEvents, err := selectFilteredEvents(db, filter)
+			if err != nil {
+				str := fmt.Sprintf("ERROR: %s", err.Error())
+				var notice nostr.NoticeEnvelope = nostr.NoticeEnvelope(str)
+				return WriteMessage(ctx, c, &notice)
+			}
+
+			for _, event := range filteredEvents {
+				evtEnvelope := nostr.EventEnvelope{
+					SubscriptionID: &subId,
+					Event:          event,
+				}
+				WriteMessage(ctx, c, &evtEnvelope)
+			}
+
+			var eose nostr.EOSEEnvelope = nostr.EOSEEnvelope(subId)
+			return WriteMessage(ctx, c, &eose)
+		}
 	case "CLOSE":
 	default:
 		var notice nostr.NoticeEnvelope = "Invalid message"
