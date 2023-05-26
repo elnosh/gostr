@@ -2,11 +2,12 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/lib/pq"
+	_ "github.com/lib/pq"
 	"github.com/nbd-wtf/go-nostr"
 )
 
@@ -35,7 +36,12 @@ func saveEvent(db *sql.DB, e nostr.Event) error {
 	INSERT INTO events (id, pubkey, created_at, kind, tags, content, sig)
 	VALUES ($1, $2, $3, $4, $5, $6, $7)`
 
-	_, err := db.Exec(insertStatement, e.ID, e.PubKey, e.CreatedAt, e.Kind, pq.Array(e.Tags), e.Content, e.Sig)
+	jsonTags, err := json.Marshal(e.Tags)
+	if err != nil {
+		return fmt.Errorf("unable to save event: %w", err)
+	}
+
+	_, err = db.Exec(insertStatement, e.ID, e.PubKey, e.CreatedAt, e.Kind, jsonTags, e.Content, e.Sig)
 	if err != nil {
 		return fmt.Errorf("unable to save event: %w", err)
 	}
@@ -70,7 +76,19 @@ func selectFilteredEvents(db *sql.DB, filter nostr.Filter) ([]nostr.Event, error
 		filterQuery = filterQuery.Where(squirrel.Eq{"pubkey": filter.Authors})
 	}
 
-	// add for other event fields
+	if filter.Since != nil {
+		filterQuery = filterQuery.Where(squirrel.Gt{"created_at": filter.Since})
+	}
+
+	if filter.Until != nil {
+		filterQuery = filterQuery.Where(squirrel.Lt{"created_at": filter.Until})
+	}
+
+	if filter.Limit > 0 {
+		filterQuery = filterQuery.OrderBy("created_at DESC").Limit(uint64(filter.Limit))
+	}
+
+	// TODO: filter by tags
 
 	query, args, err := filterQuery.ToSql()
 	if err != nil {
@@ -87,7 +105,6 @@ func selectFilteredEvents(db *sql.DB, filter nostr.Filter) ([]nostr.Event, error
 
 	for rows.Next() {
 		var evt nostr.Event
-
 		if err := rows.Scan(&evt.ID, &evt.PubKey, &evt.CreatedAt, &evt.Kind,
 			&evt.Tags, &evt.Content, &evt.Sig); err != nil {
 			return filteredEvents, err
