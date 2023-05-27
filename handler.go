@@ -94,7 +94,7 @@ func handleMessage(ctx context.Context, c *websocket.Conn, db *sql.DB, msg []jso
 				return WriteMessage(ctx, c, msg)
 			}
 
-			go publishEvent(evt, ctx)
+			go publishEvent(ctx, evt)
 
 			msg := buildOKMessage(evt.ID, "Event received", true)
 			return WriteMessage(ctx, c, msg)
@@ -140,6 +140,16 @@ func handleMessage(ctx context.Context, c *websocket.Conn, db *sql.DB, msg []jso
 			return WriteMessage(ctx, c, &eose)
 		}
 	case "CLOSE":
+		var subId string
+		json.Unmarshal(msg[1], &subId)
+		if subs, ok := OpenConns[c]; ok {
+			if _, ok := subs[subId]; ok {
+				delete(subs, subId)
+				noticeStr := fmt.Sprintf("subscription '%v' closed", subId)
+				var notice nostr.NoticeEnvelope = nostr.NoticeEnvelope(noticeStr)
+				return WriteMessage(ctx, c, &notice)
+			}
+		}
 	default:
 		var notice nostr.NoticeEnvelope = "Invalid message"
 		return WriteMessage(ctx, c, &notice)
@@ -149,10 +159,13 @@ func handleMessage(ctx context.Context, c *websocket.Conn, db *sql.DB, msg []jso
 
 // publish event to all open connections - connections will check if newly received
 // event matches any of their filters and send it to client
-func publishEvent(evt nostr.Event, ctx context.Context) {
+func publishEvent(ctx context.Context, evt nostr.Event) {
 	for conn, subs := range OpenConns {
+		// one goroutine for each connection
 		go func(conn *websocket.Conn, subs Subcriptions) {
+			// each connection can have many subscriptions
 			for subId, filters := range subs {
+				// each subscription can have multiple filters
 				for _, filter := range filters {
 					if filter.Matches(&evt) {
 						evtEnvelope := nostr.EventEnvelope{
