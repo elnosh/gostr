@@ -12,6 +12,12 @@ import (
 	"nhooyr.io/websocket"
 )
 
+// map subscription ids to list of filters
+type Subcriptions map[string]nostr.Filters
+
+// map open connections to all subscriptions for that connection
+var OpenConns = map[*websocket.Conn]Subcriptions{}
+
 func ws(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		c, err := websocket.Accept(w, r, nil)
@@ -21,6 +27,8 @@ func ws(db *sql.DB) http.HandlerFunc {
 		}
 		defer c.Close(websocket.StatusInternalError, "error with connection")
 		log.Println("new connection")
+
+		OpenConns[c] = make(Subcriptions)
 
 		ctx := r.Context()
 		for {
@@ -46,7 +54,7 @@ func ws(db *sql.DB) http.HandlerFunc {
 				continue
 			}
 
-			err = HandleMessage(ctx, c, db, rawjson)
+			err = handleMessage(ctx, c, db, rawjson)
 			if err != nil {
 				return
 			}
@@ -55,7 +63,7 @@ func ws(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-func HandleMessage(ctx context.Context, c *websocket.Conn, db *sql.DB, msg []json.RawMessage) error {
+func handleMessage(ctx context.Context, c *websocket.Conn, db *sql.DB, msg []json.RawMessage) error {
 	if len(msg) < 2 {
 		var notice nostr.NoticeEnvelope = "ERROR: message too short"
 		return WriteMessage(ctx, c, &notice)
@@ -82,8 +90,11 @@ func HandleMessage(ctx context.Context, c *websocket.Conn, db *sql.DB, msg []jso
 			err = saveEvent(db, evt)
 			if err != nil {
 				msg := buildOKMessage(evt.ID, "error: "+err.Error(), false)
+				//msg := buildOKMessage(evt.ID, "error: "+errors.Unwrap(err).Error(), false)
 				return WriteMessage(ctx, c, msg)
 			}
+
+			go publishEvent(evt, ctx)
 
 			msg := buildOKMessage(evt.ID, "Event received", true)
 			return WriteMessage(ctx, c, msg)
@@ -100,10 +111,15 @@ func HandleMessage(ctx context.Context, c *websocket.Conn, db *sql.DB, msg []jso
 		var subId string
 		json.Unmarshal(msg[1], &subId)
 
-		// if REQ has more than one filter
 		for i := 2; i < len(msg); i++ {
 			var filter nostr.Filter
 			json.Unmarshal(msg[i], &filter)
+
+			if filters, ok := OpenConns[c][subId]; ok {
+				filters = append(filters, filter)
+			} else {
+				OpenConns[c][subId] = nostr.Filters{filter}
+			}
 
 			filteredEvents, err := selectFilteredEvents(db, filter)
 			if err != nil {
@@ -129,4 +145,24 @@ func HandleMessage(ctx context.Context, c *websocket.Conn, db *sql.DB, msg []jso
 		return WriteMessage(ctx, c, &notice)
 	}
 	return nil
+}
+
+// publish event to all open connections - connections will check if newly received
+// event matches any of their filters and send it to client
+func publishEvent(evt nostr.Event, ctx context.Context) {
+	for conn, subs := range OpenConns {
+		go func(conn *websocket.Conn, subs Subcriptions) {
+			for subId, filters := range subs {
+				for _, filter := range filters {
+					if filter.Matches(&evt) {
+						evtEnvelope := nostr.EventEnvelope{
+							SubscriptionID: &subId,
+							Event:          evt,
+						}
+						WriteMessage(ctx, conn, &evtEnvelope)
+					}
+				}
+			}
+		}(conn, subs)
+	}
 }
