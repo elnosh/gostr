@@ -135,10 +135,9 @@ func handleMessage(ctx context.Context, c *websocket.Conn, db *sql.DB, msg []jso
 				}
 				WriteMessage(ctx, c, &evtEnvelope)
 			}
-
-			var eose nostr.EOSEEnvelope = nostr.EOSEEnvelope(subId)
-			return WriteMessage(ctx, c, &eose)
 		}
+		var eose nostr.EOSEEnvelope = nostr.EOSEEnvelope(subId)
+		return WriteMessage(ctx, c, &eose)
 	case "CLOSE":
 		var subId string
 		json.Unmarshal(msg[1], &subId)
