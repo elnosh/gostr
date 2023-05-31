@@ -65,7 +65,11 @@ func selectFilteredEvents(db *sql.DB, filter nostr.Filter) ([]nostr.Event, error
 	filterQuery := squirrel.Select("*").From("events").PlaceholderFormat(squirrel.Dollar)
 
 	if len(filter.IDs) > 0 {
-		filterQuery = filterQuery.Where(squirrel.Eq{"id": filter.IDs})
+		or := make(squirrel.Or, len(filter.IDs))
+		for i, id := range filter.IDs {
+			or[i] = squirrel.Like{"id": id + "%"}
+		}
+		filterQuery = filterQuery.Where(or)
 	}
 
 	if len(filter.Kinds) > 0 {
@@ -73,7 +77,11 @@ func selectFilteredEvents(db *sql.DB, filter nostr.Filter) ([]nostr.Event, error
 	}
 
 	if len(filter.Authors) > 0 {
-		filterQuery = filterQuery.Where(squirrel.Eq{"pubkey": filter.Authors})
+		or := make(squirrel.Or, len(filter.Authors))
+		for i, author := range filter.Authors {
+			or[i] = squirrel.Like{"pubkey": author + "%"}
+		}
+		filterQuery = filterQuery.Where(or)
 	}
 
 	if filter.Since != nil {
