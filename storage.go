@@ -30,7 +30,6 @@ func InitDB(config Config) *sql.DB {
 	return db
 }
 
-// use context when saving e to db
 func saveEvent(db *sql.DB, e nostr.Event) error {
 	insertStatement := `
 	INSERT INTO events (id, pubkey, created_at, kind, tags, content, sig)
@@ -96,7 +95,17 @@ func selectFilteredEvents(db *sql.DB, filter nostr.Filter) ([]nostr.Event, error
 		filterQuery = filterQuery.OrderBy("created_at DESC").Limit(uint64(filter.Limit))
 	}
 
-	// TODO: filter by tags
+	if len(filter.Tags) > 0 {
+		var or squirrel.Or
+
+		for k, v := range filter.Tags {
+			for _, hexstr := range v {
+				exprStr := fmt.Sprintf(`tags::jsonb @> '[["%v", "%v"]]'`, k, hexstr)
+				or = append(or, squirrel.Expr(exprStr))
+			}
+		}
+		filterQuery = filterQuery.Where(or)
+	}
 
 	query, args, err := filterQuery.ToSql()
 	if err != nil {
