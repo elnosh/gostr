@@ -21,7 +21,17 @@ func InitDB(config Config) *sql.DB {
 		log.Fatal(err)
 	}
 
-	err = db.Ping()
+	createTable := `CREATE TABLE IF NOT EXISTS events (
+		id text NOT NULL,  
+		pubkey text NOT NULL, 
+		created_at bigint NOT NULL,
+		kind integer NOT NULL,
+		tags jsonb NOT NULL,
+		content text NOT NULL,
+		sig text NOT NULL);
+	`
+
+	_, err = db.Exec(createTable)
 	if err != nil {
 		log.Fatal(err)
 	}
