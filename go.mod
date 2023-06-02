@@ -1,4 +1,4 @@
-module github.com/elnosh/lets-go-nostr
+module github.com/elnosh/gostr
 
 go 1.20
 
