@@ -1,17 +1,20 @@
 package main
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
+	"io"
 
+	"github.com/gobwas/ws/wsutil"
 	"github.com/nbd-wtf/go-nostr"
-	"nhooyr.io/websocket"
-	"nhooyr.io/websocket/wsjson"
 )
 
-func WriteMessage(ctx context.Context, c *websocket.Conn, msgEnvelope nostr.Envelope) error {
-	return wsjson.Write(ctx, c, msgEnvelope)
+func WriteMessage(w io.Writer, msgEnvelope nostr.Envelope) error {
+	jsonMsg, err := msgEnvelope.MarshalJSON()
+	if err != nil {
+		return err
+	}
+	return wsutil.WriteServerText(w, jsonMsg)
 }
 
 func buildOKMessage(id, message string, success bool) *nostr.OKEnvelope {
