@@ -25,4 +25,4 @@ a [nostr](https://github.com/nostr-protocol/nostr) relay written in go
 
 4. With [go](https://go.dev/doc/install) installed, run `go build .` 
 
-5. run it `./gostr`
+5. Run it `./gostr`
