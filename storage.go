@@ -57,6 +57,12 @@ func saveEvent(db *sql.DB, e nostr.Event) error {
 	return nil
 }
 
+func deleteEvent(db *sql.DB, id string) error {
+	deleteStatement := `DELETE FROM events WHERE id = $1;`
+	_, err := db.Exec(deleteStatement, id)
+	return err
+}
+
 func eventExists(db *sql.DB, id string) (bool, error) {
 	sqlStatement := `SELECT EXISTS(SELECT 1 FROM events WHERE id=$1)`
 	var exists bool

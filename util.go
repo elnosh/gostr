@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"io"
 
@@ -21,6 +22,15 @@ func buildOKMessage(id, message string, success bool) *nostr.OKEnvelope {
 	return &nostr.OKEnvelope{EventID: id, OK: success, Reason: &message}
 }
 
+func isValid32Hex(hexStr string) bool {
+	hexBytes, err := hex.DecodeString(hexStr)
+	if err != nil {
+		return false
+	}
+
+	return len(hexBytes) == 32
+}
+
 func validEvent(db *sql.DB, evt nostr.Event) (bool, error) {
 	eventId := evt.GetID()
 	if eventId != evt.ID {
@@ -38,6 +48,26 @@ func validEvent(db *sql.DB, evt nostr.Event) (bool, error) {
 	validSig, err := evt.CheckSignature()
 	if err != nil {
 		return false, err
+	}
+	if !validSig {
+		return false, fmt.Errorf("bad signature")
+	}
+
+	if evt.Kind == 5 {
+		if len(evt.Tags) < 1 {
+			return false, fmt.Errorf("event kind '5' does not have any tags")
+		} else {
+			etagPresent := false
+			for _, tag := range evt.Tags {
+				if len(tag) > 1 && tag[0] == "e" {
+					etagPresent = true
+					break
+				}
+			}
+			if !etagPresent {
+				return false, fmt.Errorf("event kind '5' does not reference any events")
+			}
+		}
 	}
 
 	return validSig, nil

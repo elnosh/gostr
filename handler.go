@@ -39,17 +39,11 @@ func handleWS(db *sql.DB) http.HandlerFunc {
 
 			ctx := r.Context()
 			for {
-				//log.Println("running")
 				message, err := wsutil.ReadClientText(conn)
 				if err != nil {
 					log.Println(err)
 					return
 				}
-
-				// handle other closing cases
-				// if websocket.CloseStatus(err) == websocket.StatusNoStatusRcvd {
-				// 	break
-				// }
 
 				if !json.Valid(message) {
 					var notice nostr.NoticeEnvelope = "Invalid json"
@@ -92,28 +86,53 @@ func handleMessage(ctx context.Context, conn *net.Conn, db *sql.DB, msg []json.R
 			return WriteMessage(*conn, &notice)
 		}
 
-		valid, err := validEvent(db, evt)
+		_, err := validEvent(db, evt)
 		if err != nil {
 			msg := buildOKMessage(evt.ID, "invalid: "+err.Error(), false)
 			return WriteMessage(*conn, msg)
 		}
 
-		if valid {
-			err = saveEvent(db, evt)
-			if err != nil {
-				msg := buildOKMessage(evt.ID, "error: "+err.Error(), false)
-				//msg := buildOKMessage(evt.ID, "error: "+errors.Unwrap(err).Error(), false)
+		// nip-09 handle event deletion
+		if evt.Kind == 5 {
+			valid := false
+			filter := nostr.Filter{IDs: []string{}}
+			for _, tag := range evt.Tags {
+				if len(tag) > 1 && tag[0] == "e" {
+					if isValid32Hex(tag[1]) {
+						filter.IDs = append(filter.IDs, tag[1])
+					}
+				}
+			}
+			if len(filter.IDs) > 0 {
+				referencedEvents, err := selectFilteredEvents(db, filter)
+				if err == nil {
+					for _, event := range referencedEvents {
+						// only delete event if pubkey from referenced event
+						// matches pubkey of delete request event
+						if event.PubKey == evt.PubKey {
+							deleteEvent(db, event.ID)
+							valid = true
+						}
+					}
+				}
+			}
+			if !valid {
+				msg := buildOKMessage(evt.ID, "invalid: tags do not reference owned events", false)
 				return WriteMessage(*conn, msg)
 			}
+		}
 
-			go publishEvent(evt)
-
-			msg := buildOKMessage(evt.ID, "Event received", true)
-			return WriteMessage(*conn, msg)
-		} else {
-			msg := buildOKMessage(evt.ID, "invalid: bad signature", false)
+		err = saveEvent(db, evt)
+		if err != nil {
+			msg := buildOKMessage(evt.ID, "error: "+err.Error(), false)
+			//msg := buildOKMessage(evt.ID, "error: "+errors.Unwrap(err).Error(), false)
 			return WriteMessage(*conn, msg)
 		}
+
+		go publishEvent(evt)
+
+		msg := buildOKMessage(evt.ID, "Event received", true)
+		return WriteMessage(*conn, msg)
 	case "REQ":
 		if len(msg) < 3 {
 			var notice nostr.NoticeEnvelope = "ERROR: message too short"
