@@ -117,7 +117,7 @@ func handleMessage(ctx context.Context, conn *net.Conn, db *sql.DB, msg []json.R
 				}
 			}
 			if !valid {
-				msg := buildOKMessage(evt.ID, "invalid: tags do not reference owned events", false)
+				msg := buildOKMessage(evt.ID, "invalid: e tags do not reference owned events", false)
 				return WriteMessage(*conn, msg)
 			}
 		}
@@ -125,7 +125,6 @@ func handleMessage(ctx context.Context, conn *net.Conn, db *sql.DB, msg []json.R
 		err = saveEvent(db, evt)
 		if err != nil {
 			msg := buildOKMessage(evt.ID, "error: "+err.Error(), false)
-			//msg := buildOKMessage(evt.ID, "error: "+errors.Unwrap(err).Error(), false)
 			return WriteMessage(*conn, msg)
 		}
 

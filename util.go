@@ -53,6 +53,16 @@ func validEvent(db *sql.DB, evt nostr.Event) (bool, error) {
 		return false, fmt.Errorf("bad signature")
 	}
 
+	for _, tag := range evt.Tags {
+		if len(tag) > 1 {
+			if tag[0] == "e" || tag[0] == "p" {
+				if !isValid32Hex(tag[1]) {
+					return false, fmt.Errorf("bad %v tag", tag[0])
+				}
+			}
+		}
+	}
+
 	if evt.Kind == 5 {
 		if len(evt.Tags) < 1 {
 			return false, fmt.Errorf("event kind '5' does not have any tags")
